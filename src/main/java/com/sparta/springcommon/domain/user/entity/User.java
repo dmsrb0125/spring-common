@@ -4,7 +4,6 @@ package com.sparta.springcommon.domain.user.entity;
 import com.sparta.springcommon.common.Timestamped;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
-
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -20,11 +19,9 @@ public class User extends Timestamped {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-
     @NotNull
     @Column(unique = true)
     private String username;
-
 
     @Setter
     @NotNull

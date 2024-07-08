@@ -8,7 +8,10 @@ import com.sparta.springcommon.domain.user.dto.LoginRequestDto;
 import com.sparta.springcommon.domain.user.entity.User;
 import com.sparta.springcommon.domain.user.entity.UserStatusEnum;
 import com.sparta.springcommon.domain.user.repository.UserAdapter;
-import com.sparta.springcommon.exception.custom.user.UserException;
+import com.sparta.springcommon.exception.custom.auth.InvalidTokenException;
+import com.sparta.springcommon.exception.custom.auth.UserAuthenticationException;
+import com.sparta.springcommon.exception.custom.auth.UserDeletedException;
+import com.sparta.springcommon.exception.custom.auth.UserInfoException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletOutputStream;
 import jakarta.servlet.http.HttpServletRequest;
@@ -19,6 +22,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.stereotype.Component;
 
@@ -30,11 +34,13 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
     private final JwtProvider jwtProvider;
     private final UserAdapter userAdapter;
     private final ObjectMapper objectMapper;
+    private final PasswordEncoder passwordEncoder;
 
-    public JwtAuthenticationFilter(JwtProvider jwtProvider, UserAdapter userAdapter, ObjectMapper objectMapper) {
+    public JwtAuthenticationFilter(JwtProvider jwtProvider, UserAdapter userAdapter, ObjectMapper objectMapper, PasswordEncoder passwordEncoder) {
         this.jwtProvider = jwtProvider;
         this.userAdapter = userAdapter;
         this.objectMapper = objectMapper;
+        this.passwordEncoder = passwordEncoder;
         setFilterProcessesUrl("/users/login");
     }
 
@@ -44,11 +50,21 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
         log.info("JwtAuthenticationFilter 시작");
         try {
             LoginRequestDto requestDto = objectMapper.readValue(request.getInputStream(), LoginRequestDto.class);
-            User user = userAdapter.findByUsername(requestDto.getUsername());
+            User user;
+            try {
+                user = userAdapter.findByUsername(requestDto.getUsername());
+            } catch (Exception e) {
+                throw new UserInfoException();
+            }
+
+            // 비밀번호가 일치하지 않는 경우
+            if (!passwordEncoder.matches(requestDto.getPassword(), user.getPassword())) {
+                throw new UserInfoException();
+            }
 
             // 탈퇴한 사용자인지 확인
             if (user.getUserStatus() == UserStatusEnum.STATUS_DELETED) {
-                throw new UserException(ResponseCodeEnum.USER_DELETED);
+                throw new UserDeletedException();
             }
 
             return getAuthenticationManager().authenticate(
@@ -60,7 +76,7 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
             );
         } catch (IOException e) {
             log.error(e.getMessage());
-            throw new RuntimeException(e.getMessage());
+            throw new InvalidTokenException();
         }
     }
 
@@ -91,11 +107,15 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
     @Override
     protected void unsuccessfulAuthentication(HttpServletRequest request, HttpServletResponse response, AuthenticationException failed) throws IOException {
         log.info("JwtAuthenticationFilter: 인증 실패");
-        request.setAttribute("loginSuccess", false); // 로그인 실패 플래그 설정
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
 
         // 로그인 실패 응답 본문 설정
-        writeResponseBody(response, ResponseUtils.error(ResponseCodeEnum.INVALID_TOKENS));
+        if (failed instanceof UserAuthenticationException) {
+            ResponseCodeEnum responseCode = ((UserAuthenticationException) failed).getResponseCode();
+            writeErrorResponse(response, responseCode);
+        } else {
+            writeErrorResponse(response, ResponseCodeEnum.INVALID_TOKENS);
+        }
     }
 
     // 응답을 헤더뿐 아니라 바디에도 추가로 보내주기 위한 메서드
@@ -106,5 +126,11 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
             objectMapper.writeValue(outputStream, responseEntity.getBody());
             outputStream.flush();
         }
+    }
+
+    // 에러 응답 설정 메서드
+    private void writeErrorResponse(HttpServletResponse response, ResponseCodeEnum responseCodeEnum) throws IOException {
+        ResponseEntity<HttpResponseDto<Void>> responseEntity = ResponseUtils.error(responseCodeEnum);
+        writeResponseBody(response, responseEntity);
     }
 }

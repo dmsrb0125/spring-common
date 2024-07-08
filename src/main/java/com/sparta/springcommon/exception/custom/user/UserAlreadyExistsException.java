@@ -1,5 +1,6 @@
 package com.sparta.springcommon.exception.custom.user;
 
+
 import com.sparta.springcommon.common.ResponseCodeEnum;
 
 public class UserAlreadyExistsException extends UserException {

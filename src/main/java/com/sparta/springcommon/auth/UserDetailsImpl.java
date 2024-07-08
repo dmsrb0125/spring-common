@@ -1,6 +1,7 @@
 package com.sparta.springcommon.auth;
 
 
+
 import com.sparta.springcommon.domain.user.entity.User;
 import lombok.Getter;
 import org.springframework.security.core.GrantedAuthority;

@@ -1,5 +1,6 @@
 package com.sparta.springcommon.exception;
 
+
 import com.sparta.springcommon.common.HttpResponseDto;
 import com.sparta.springcommon.common.ResponseUtils;
 import com.sparta.springcommon.exception.custom.user.UserException;
